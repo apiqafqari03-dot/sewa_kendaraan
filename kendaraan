@@ -1,0 +1,199 @@
+"""Modul kendaraan: class abstrak Kendaraan beserta turunannya, Mobil dan Motor.
+
+Konsep OOP yang diterapkan:
+- Abstraksi     : Kendaraan adalah abstract class (modul abc).
+- Enkapsulasi   : atribut bersifat private, diakses lewat property yang memvalidasi nilai.
+- Pewarisan     : Mobil dan Motor mewarisi Kendaraan.
+- Polymorphism  : hitung_biaya() berbeda untuk Mobil dan Motor (method overriding).
+"""
+import re
+from abc import ABC, abstractmethod
+
+from Exceptions import DataTidakValidError, KendaraanTidakTersediaError
+
+
+def format_rupiah(nilai):
+    """Mengubah angka menjadi teks rupiah, contoh: 1500000 -> 'Rp 1.500.000'."""
+    return "Rp " + f"{round(nilai):,}".replace(",", ".")
+
+
+class Kendaraan(ABC):
+    """Class induk untuk semua kendaraan yang dapat disewakan."""
+
+    STATUS_TERSEDIA = "tersedia"
+    STATUS_DISEWA = "disewa"
+    _POLA_PLAT = re.compile(r"^[A-Z]{1,2} ?\d{1,4} ?[A-Z]{0,3}$")
+
+    def __init__(self, plat_nomor, merek, tarif_per_hari):
+        self.__plat_nomor = ""
+        self.__merek = ""
+        self.__tarif_per_hari = 0.0
+        self.__status = Kendaraan.STATUS_TERSEDIA
+        # Pengisian lewat property agar validasi selalu dijalankan.
+        self.plat_nomor = plat_nomor
+        self.merek = merek
+        self.tarif_per_hari = tarif_per_hari
+
+    # ---------------------------------------------------------- property
+    @property
+    def plat_nomor(self):
+        return self.__plat_nomor
+
+    @plat_nomor.setter
+    def plat_nomor(self, nilai):
+        nilai = str(nilai).strip().upper()
+        if not nilai:
+            raise DataTidakValidError("Plat nomor tidak boleh kosong.")
+        if not self._POLA_PLAT.match(nilai):
+            raise DataTidakValidError(
+                "Format plat nomor tidak valid (contoh: BH 1234 AB)."
+            )
+        self.__plat_nomor = nilai
+
+    @property
+    def merek(self):
+        return self.__merek
+
+    @merek.setter
+    def merek(self, nilai):
+        nilai = str(nilai).strip()
+        if not nilai:
+            raise DataTidakValidError("Merek kendaraan tidak boleh kosong.")
+        self.__merek = nilai
+
+    @property
+    def tarif_per_hari(self):
+        return self.__tarif_per_hari
+
+    @tarif_per_hari.setter
+    def tarif_per_hari(self, nilai):
+        try:
+            nilai = float(nilai)
+        except (TypeError, ValueError):
+            raise DataTidakValidError(
+                "Tarif per hari harus berupa angka (contoh: 350000)."
+            )
+        if nilai <= 0:
+            raise DataTidakValidError("Tarif per hari harus lebih dari 0.")
+        self.__tarif_per_hari = nilai
+
+    @property
+    def status(self):
+        """Status hanya dapat dibaca; perubahannya lewat sewa() dan kembalikan()."""
+        return self.__status
+
+    @property
+    @abstractmethod
+    def jenis(self):
+        """Nama jenis kendaraan, diisi oleh class turunan."""
+
+    # ------------------------------------------------------------ method
+    def tersedia(self):
+        return self.__status == Kendaraan.STATUS_TERSEDIA
+
+    def sewa(self):
+        if not self.tersedia():
+            raise KendaraanTidakTersediaError(
+                f"Kendaraan {self.plat_nomor} sedang disewa dan belum tersedia."
+            )
+        self.__status = Kendaraan.STATUS_DISEWA
+
+    def kembalikan(self):
+        if self.tersedia():
+            raise DataTidakValidError(
+                f"Kendaraan {self.plat_nomor} tidak sedang disewa."
+            )
+        self.__status = Kendaraan.STATUS_TERSEDIA
+
+    @staticmethod
+    def _validasi_lama(lama):
+        if isinstance(lama, bool) or not isinstance(lama, int) or lama <= 0:
+            raise DataTidakValidError("Lama sewa harus bilangan bulat lebih dari 0.")
+        return lama
+
+    @abstractmethod
+    def hitung_biaya(self, lama):
+        """Menghitung biaya sewa untuk 'lama' hari; aturannya berbeda tiap jenis."""
+
+    def __str__(self):
+        return (
+            f"{self.jenis:<6} | {self.plat_nomor:<11} | {self.merek:<14} | "
+            f"{format_rupiah(self.tarif_per_hari):>12}/hari | {self.status}"
+        )
+
+
+class Mobil(Kendaraan):
+    """Kendaraan roda empat. Biaya sewa = tarif x lama + asuransi 10%."""
+
+    PERSEN_ASURANSI = 0.10
+    TRANSMISI_VALID = ("manual", "otomatis")
+
+    def __init__(self, plat_nomor, merek, tarif_per_hari, jumlah_kursi, transmisi):
+        super().__init__(plat_nomor, merek, tarif_per_hari)
+        self.__jumlah_kursi = 0
+        self.__transmisi = ""
+        self.jumlah_kursi = jumlah_kursi
+        self.transmisi = transmisi
+
+    @property
+    def jenis(self):
+        return "Mobil"
+
+    @property
+    def jumlah_kursi(self):
+        return self.__jumlah_kursi
+
+    @jumlah_kursi.setter
+    def jumlah_kursi(self, nilai):
+        if isinstance(nilai, bool) or not isinstance(nilai, int) or not 1 <= nilai <= 20:
+            raise DataTidakValidError("Jumlah kursi harus bilangan bulat 1 sampai 20.")
+        self.__jumlah_kursi = nilai
+
+    @property
+    def transmisi(self):
+        return self.__transmisi
+
+    @transmisi.setter
+    def transmisi(self, nilai):
+        nilai = str(nilai).strip().lower()
+        if nilai not in self.TRANSMISI_VALID:
+            raise DataTidakValidError("Transmisi harus 'manual' atau 'otomatis'.")
+        self.__transmisi = nilai
+
+    def hitung_biaya(self, lama):
+        lama = self._validasi_lama(lama)
+        biaya_dasar = self.tarif_per_hari * lama
+        return biaya_dasar * (1 + self.PERSEN_ASURANSI)
+
+    def __str__(self):
+        return f"{super().__str__()} | {self.jumlah_kursi} kursi, {self.transmisi}"
+
+
+class Motor(Kendaraan):
+    """Kendaraan roda dua. Biaya sewa = tarif x lama (tanpa biaya tambahan)."""
+
+    def __init__(self, plat_nomor, merek, tarif_per_hari, kapasitas_cc):
+        super().__init__(plat_nomor, merek, tarif_per_hari)
+        self.__kapasitas_cc = 0
+        self.kapasitas_cc = kapasitas_cc
+
+    @property
+    def jenis(self):
+        return "Motor"
+
+    @property
+    def kapasitas_cc(self):
+        return self.__kapasitas_cc
+
+    @kapasitas_cc.setter
+    def kapasitas_cc(self, nilai):
+        if isinstance(nilai, bool) or not isinstance(nilai, int) or nilai <= 0:
+            raise DataTidakValidError("Kapasitas mesin (cc) harus bilangan bulat > 0.")
+        self.__kapasitas_cc = nilai
+
+    def hitung_biaya(self, lama):
+        lama = self._validasi_lama(lama)
+        return self.tarif_per_hari * lama
+
+    def __str__(self):
+        return f"{super().__str__()} | {self.kapasitas_cc} cc"
